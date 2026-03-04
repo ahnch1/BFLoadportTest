@@ -1,0 +1,6 @@
+@BackendPLCAPP_HostAddress = http://localhost:5083
+
+GET {{BackendPLCAPP_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
