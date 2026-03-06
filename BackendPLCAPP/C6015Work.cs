@@ -73,6 +73,7 @@ namespace BackendPLCAPP
                     status.ConnectionState = $"Error: {ex.Message}";
                 }
             }
+            _currentStatus = status;
             return status;
         }
 

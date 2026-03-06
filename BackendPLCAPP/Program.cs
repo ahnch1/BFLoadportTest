@@ -13,6 +13,7 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddSingleton<C6015Work>(); // 1. 클래스를 싱글톤으로 등록
 builder.Services.AddSingleton<DemoRoutineService>(); // 데모 루틴 서비스를 싱글톤으로 추가
+builder.Services.AddHostedService<PlcBackgroundWorker>();
 
 builder.Services.AddControllers();
 // 2. CORS 설정 (프론트엔드 React가 접근할 수 있도록 허용)

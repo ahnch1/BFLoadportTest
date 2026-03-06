@@ -1,56 +1,42 @@
-import React, { useEffect, useState } from 'react';
-import { useStore } from './Store'; // 통합된 상태 저장소 사용
+import React, { useEffect } from 'react'; // useState 삭제
+import { useStore } from './Store';
 
 const App: React.FC = () => {
-  // 전역 상태(Store)에서 데모 상태, PLC 데이터, 업데이트 함수들을 가져옵니다.
   const { 
     machineState, tipBoxCount, deepWellCount, 
     tipLoadTimer, deepWellInTimer, deepWellOutTimer, agarPlateTimer, 
     plcData, setDemoState, setPlcData 
   } = useStore();
   
-  const [isConnected, setIsConnected] = useState(false);
+  // 기존에 있던 isConnected 관련 상태 변수 삭제
 
-  // SSE 서버 연결 및 데이터 수신 [2, 3]
   useEffect(() => {
-    const eventSource = new EventSource('http://localhost:7191/api/plc/stream'); 
-
-    eventSource.onopen = () => setIsConnected(true);
-    eventSource.onerror = () => setIsConnected(false);
+    const eventSource = new EventSource('https://localhost:7191/api/plc/stream'); 
+    
+    // onopen, onerror를 통한 isConnected 갱신 삭제
     
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      // 백엔드에서 전송하는 JSON 구조에 맞춰 각각의 상태 업데이트
-      if (data.demoState) {
-        setDemoState(data.demoState);
-      }
-      if (data.plcData) {
-        setPlcData(data.plcData);
-      }
+      if (data.demoState) setDemoState(data.demoState);
+      if (data.plcData) setPlcData(data.plcData);
     };
 
     return () => {
       eventSource.close();
-      setIsConnected(false);
     };
   }, [setDemoState, setPlcData]);
 
-  // REST API 명령 전송 함수 [1]
   const sendCommand = async (command: string) => {
     try {
-      await fetch(`http://localhost:7191/api/demo/${command}`, { method: 'POST' });
+      await fetch(`https://localhost:7191/api/demo/${command}`, { method: 'POST' });
     } catch (error) {
       console.error('명령 전송 실패:', error);
     }
   };
 
-  // 장비 상태 토글 핸들러 [4]
   const toggleMachineState = () => {
-    if (machineState === 'Stop') {
-      sendCommand('start');
-    } else {
-      sendCommand('stop');
-    }
+    if (machineState === 'Stop') sendCommand('start');
+    else sendCommand('stop');
   };
 
   return (
@@ -62,15 +48,23 @@ const App: React.FC = () => {
             <button style={styles.blueButton}>장비 연결</button>
             <div style={styles.radioGroup}>
               <div style={styles.radioItem}>
-                <div style={{ ...styles.radioCircle, backgroundColor: isConnected ? '#3b82f6' : 'transparent' }} />
+                {/* 실제 PLC가 Connected일 때만 파란색 불이 들어옴 */}
+                <div style={{ ...styles.radioCircle, backgroundColor: plcData.ConnectionState === 'Connected' ? '#3b82f6' : 'transparent' }} />
                 <span>ON</span>
               </div>
               <div style={styles.radioItem}>
-                <div style={{ ...styles.radioCircle, backgroundColor: !isConnected ? '#ef4444' : 'transparent' }} />
+                {/* Connected가 아니면 빨간색 불이 들어옴 */}
+                <div style={{ ...styles.radioCircle, backgroundColor: plcData.ConnectionState !== 'Connected' ? '#ef4444' : 'transparent' }} />
                 <span>OFF</span>
               </div>
             </div>
           </div>
+          
+          {/* 💡 디버깅용: 실제 PLC 연결 상태 텍스트 출력 */}
+          <div style={{ color: plcData.ConnectionState === 'Connected' ? '#22c55e' : '#ef4444', fontSize: '14px', fontWeight: 'bold', marginBottom: '10px' }}>
+            상태 메세지: {plcData.ConnectionState}
+          </div>
+
           <div style={styles.counterBox}>Tipbox Counter : {tipBoxCount}</div>
           <div style={styles.counterBox}>Deepwell Counter : {deepWellCount}</div>
         </div>
