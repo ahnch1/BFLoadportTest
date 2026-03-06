@@ -12,6 +12,15 @@ namespace BackendPLCAPP
         private bool _handlesCreated = false;
         private readonly object _lock = new object(); // 동기화를 위한 락 객체
 
+        // 1. 최신 PLC 상태를 보관하는 내부 캐시 변수 추가
+        private DeviceStatus _currentStatus = new DeviceStatus();
+
+        // 2. 외부에서 비동기 대기 없이 즉시 최신 상태를 가져갈 수 있는 동기 메서드 추가
+        public DeviceStatus GetDeviceStatus()
+        {
+            return _currentStatus;
+        }
+
         public async Task<DeviceStatus> ReadInputsAsync(CancellationToken ct = default)
         {
             var status = new DeviceStatus();

@@ -1,4 +1,6 @@
 using BackendPLCAPP; // 0. 파일이 있는 네임스페이스
+using BackendPLCAPP.Controllers;
+using BackendPLCAPP.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,6 +12,8 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddSingleton<C6015Work>(); // 1. 클래스를 싱글톤으로 등록
+builder.Services.AddSingleton<DemoRoutineService>(); // 데모 루틴 서비스를 싱글톤으로 추가
+
 builder.Services.AddControllers();
 // 2. CORS 설정 (프론트엔드 React가 접근할 수 있도록 허용)
 builder.Services.AddCors(options =>
