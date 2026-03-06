@@ -15,10 +15,18 @@ interface AppState {
   machineState: 'Stop' | 'Ready' | 'Run';
   tipBoxCount: number;
   deepWellCount: number;
+
   tipLoadTimer: number;
+  tipLoadMessage: string; // 새로 추가
+
   deepWellInTimer: number;
+  deepWellInMessage: string; // 새로 추가
+
   deepWellOutTimer: number;
+  deepWellOutMessage: string; // 새로 추가
+
   agarPlateTimer: number;
+  agarPlateMessage: string; // 새로 추가
 
   // 2. PLC I/O 데이터 상태
   plcData: PlcData;
@@ -33,10 +41,15 @@ export const useStore = create<AppState>((set) => ({
   machineState: 'Stop',
   tipBoxCount: 0,
   deepWellCount: 0,
+
   tipLoadTimer: 0,
+  tipLoadMessage: '', // 초기값 추가
   deepWellInTimer: 0,
+  deepWellInMessage: '', // 초기값 추가
   deepWellOutTimer: 0,
+  deepWellOutMessage: '', // 초기값 추가
   agarPlateTimer: 0,
+  agarPlateMessage: '', // 초기값 추가
 
   // PLC 데이터 초기값
   plcData: {

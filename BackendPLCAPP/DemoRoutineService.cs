@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 
 namespace BackendPLCAPP.Services
 {
-    // 장비 상태 정의 [1]
     public enum MachineState
     {
         Stop,
@@ -12,7 +11,6 @@ namespace BackendPLCAPP.Services
         Run
     }
 
-    // 프론트엔드와 공유할 상태 모델 [1]
     public class DemoStateModel
     {
         public MachineState CurrentState { get; set; } = MachineState.Stop;
@@ -20,265 +18,185 @@ namespace BackendPLCAPP.Services
         public int DeepWellCount { get; set; } = 0;
 
         public int TipLoadTimer { get; set; } = 0;
+        public string TipLoadMessage { get; set; } = "";
+
         public int DeepWellInTimer { get; set; } = 0;
+        public string DeepWellInMessage { get; set; } = "";
+
         public int DeepWellOutTimer { get; set; } = 0;
+        public string DeepWellOutMessage { get; set; } = "";
+
         public int AgarPlateTimer { get; set; } = 0;
+        public string AgarPlateMessage { get; set; } = "";
+
     }
 
     public class DemoRoutineService
     {
         public DemoStateModel State { get; private set; } = new DemoStateModel();
 
-        // 싱글톤으로 등록된 PLC 통신 서비스를 주입받음
-        private readonly C6015Work _plcService;
+        // 센서 이전 상태 기억용 변수
+        private bool _prevTipLoad = false, _waitTipLoadRemove = false;
+        private bool _prevDwIn = false, _waitDwInRemove = false;
+        private bool _prevDwOut = false, _waitDwOutRemove = false;
+        private bool _prevAgarIn = false, _waitAgarInRemove = false;
+        // 각 포트별 타이머 취소 토큰
+        private CancellationTokenSource _ctsTipLoad;
+        private CancellationTokenSource _ctsDwIn;
+        private CancellationTokenSource _ctsDwOut;
+        private CancellationTokenSource _ctsAgarIn;
 
-        public DemoRoutineService(C6015Work plcService)
-        {
-            _plcService = plcService;
-        }
+        //// 싱글톤으로 등록된 PLC 통신 서비스를 주입받음
+        //private readonly C6015Work _plcService;
 
-        // --------------------------------------------------------
-        // 1. 기본 장비 상태 제어 (Start / Stop) [1]
-        // --------------------------------------------------------
-        public void PressStartButton()
+        //public DemoRoutineService(C6015Work plcService)
+        //{
+        //    _plcService = plcService;
+        //}
+
+        // 백그라운드 워커에서 50ms마다 호출되는 통합 센서 체크 메서드
+        public void CheckSensorState(DeviceStatus plcData)
         {
-            if (State.CurrentState == MachineState.Stop)
+            // ----------------------------------------------------
+            // 1. Tipbox In (Di1)
+            // ----------------------------------------------------
+            if (plcData.Di1 && !_prevTipLoad)
             {
-                State.CurrentState = MachineState.Ready;
-                Console.WriteLine("장비 상태: Ready (Tipbox, Deep Well, Agar Plate 로딩 대기)");
+                _ctsTipLoad?.Cancel();
+                _ctsTipLoad = new CancellationTokenSource();
+                _ = StartCountdownAsync(1, _ctsTipLoad.Token);
             }
-        }
-
-        public void PressStopButton()
-        {
-            State.CurrentState = MachineState.Stop;
-            Console.WriteLine("장비 상태: Stop");
-        }
-
-        // --------------------------------------------------------
-        // 2. 외부 동작 명령 (포트별 로딩 로직) [2, 3]
-        // --------------------------------------------------------
-
-        // TipLoad 요청 처리 [2]
-        public async Task ExecuteTipLoadAsync(CancellationToken cancellationToken)
-        {
-            if (State.CurrentState != MachineState.Ready) return;
-
-            var plcData = _plcService.GetDeviceStatus();
-            if (plcData.Di1) // 로드 포트에 Tipbox가 있으면 넣지 못함 (센서 ON)
+            else if (!plcData.Di1 && _prevTipLoad)
             {
-                Console.WriteLine("TipLoad 불가: 로드 포트에 이미 제품이 있습니다.");
-                return;
-            }
-
-            bool initialState = plcData.Di1;
-
-            try
-            {
-                // 5초 카운트다운 [2]
-                for (int i = 5; i > 0; i--)
-                {
-                    State.TipLoadTimer = i;
-                    await Task.Delay(1000, cancellationToken);
-
-                    // 5초간 제품감지 상태가 변경되면 에러 메세지 후 Stop [2]
-                    if (_plcService.GetDeviceStatus().Di1 != initialState)
-                    {
-                        Console.WriteLine("에러: TipLoad 5초 대기 중 상태가 변경되었습니다.");
-                        State.CurrentState = MachineState.Stop;
-                        State.TipLoadTimer = 0;
-                        return;
-                    }
-                }
-
-                State.TipBoxCount++; // 로딩 성공 후 카운터 증가
-
-                // 30초 뒤 TipLoad Off (UI 표시) 비동기 실행 [2]
-                State.TipLoadTimer = 30;
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(30000);
-                    State.TipLoadTimer = 0;
-                });
-            }
-            catch (TaskCanceledException)
-            {
+                _ctsTipLoad?.Cancel();
                 State.TipLoadTimer = 0;
+                if (_waitTipLoadRemove)
+                {
+                    State.TipBoxCount++; // 제거 시 카운터 증가
+                    State.TipLoadMessage = "";
+                    _waitTipLoadRemove = false;
+                }
             }
+            _prevTipLoad = plcData.Di1;
+
+            // ----------------------------------------------------
+            // 2. DeepWell In (Di2)
+            // ----------------------------------------------------
+            if (plcData.Di2 && !_prevDwIn)
+            {
+                _ctsDwIn?.Cancel();
+                _ctsDwIn = new CancellationTokenSource();
+                _ = StartCountdownAsync(2, _ctsDwIn.Token);
+            }
+            else if (!plcData.Di2 && _prevDwIn)
+            {
+                _ctsDwIn?.Cancel();
+                State.DeepWellInTimer = 0;
+                if (_waitDwInRemove)
+                {
+                    State.DeepWellCount++; // 제거 시 DeepWell 카운터 증가
+                    State.DeepWellInMessage = "";
+                    _waitDwInRemove = false;
+                }
+            }
+            _prevDwIn = plcData.Di2;
+
+            // ----------------------------------------------------
+            // 3. DeepWell Out (Di3)
+            // ----------------------------------------------------
+            if (plcData.Di3 && !_prevDwOut)
+            {
+                _ctsDwOut?.Cancel();
+                _ctsDwOut = new CancellationTokenSource();
+                _ = StartCountdownAsync(3, _ctsDwOut.Token);
+            }
+            else if (!plcData.Di3 && _prevDwOut)
+            {
+                _ctsDwOut?.Cancel();
+                State.DeepWellOutTimer = 0;
+                if (_waitDwOutRemove)
+                {
+                    // Out의 경우 가져갔으므로 카운터 감소 (0 이하로 떨어지지 않게 방어)
+                    if (State.DeepWellCount > 0) State.DeepWellCount--;
+                    State.DeepWellOutMessage = "";
+                    _waitDwOutRemove = false;
+                }
+            }
+            _prevDwOut = plcData.Di3;
+
+            // ----------------------------------------------------
+            // 4. Agar Plate In (Di4)
+            // ----------------------------------------------------
+            if (plcData.Di4 && !_prevAgarIn)
+            {
+                _ctsAgarIn?.Cancel();
+                _ctsAgarIn = new CancellationTokenSource();
+                _ = StartCountdownAsync(4, _ctsAgarIn.Token);
+            }
+            else if (!plcData.Di4 && _prevAgarIn)
+            {
+                _ctsAgarIn?.Cancel();
+                State.AgarPlateTimer = 0;
+                if (_waitAgarInRemove)
+                {
+                    // Agar Plate는 별도 카운터가 없으므로 메세지만 삭제
+                    State.AgarPlateMessage = "";
+                    _waitAgarInRemove = false;
+                }
+            }
+            _prevAgarIn = plcData.Di4;
         }
 
-        // DeepWell In 요청 처리 [2]
-        public async Task ExecuteDeepWellInAsync(CancellationToken cancellationToken)
+        // 💡 4개 포트가 공통으로 사용하는 5초 카운트다운 로직
+        private async Task StartCountdownAsync(int portType, CancellationToken ct)
         {
-            if (State.CurrentState != MachineState.Ready) return;
-
-            var plcData = _plcService.GetDeviceStatus();
-            if (plcData.Di2) // 센서 ON이면 넣지 못함 [2]
-            {
-                Console.WriteLine("DeepWell In 불가: 포트에 이미 제품이 있습니다.");
-                return;
-            }
-
-            bool initialState = plcData.Di2;
-
             try
             {
+                // 5초 카운트다운
                 for (int i = 5; i > 0; i--)
                 {
-                    State.DeepWellInTimer = i;
-                    await Task.Delay(1000, cancellationToken);
+                    if (portType == 1) State.TipLoadTimer = i;
+                    else if (portType == 2) State.DeepWellInTimer = i;
+                    else if (portType == 3) State.DeepWellOutTimer = i;
+                    else if (portType == 4) State.AgarPlateTimer = i;
 
-                    if (_plcService.GetDeviceStatus().Di2 != initialState)
-                    {
-                        Console.WriteLine("에러: DeepWell In 대기 중 상태 변경됨.");
-                        State.CurrentState = MachineState.Stop;
-                        State.DeepWellInTimer = 0;
-                        return;
-                    }
+                    await Task.Delay(1000, ct);
                 }
 
-                State.DeepWellCount++;
-
-                State.DeepWellInTimer = 30;
-                _ = Task.Run(async () =>
+                // 5초 경과 후 타이머 0으로 만들고 제거 요청 메세지 출력
+                if (portType == 1)
                 {
-                    await Task.Delay(30000);
+                    State.TipLoadTimer = 0;
+                    State.TipLoadMessage = "Tipbox 제거 요망";
+                    _waitTipLoadRemove = true;
+                }
+                else if (portType == 2)
+                {
                     State.DeepWellInTimer = 0;
-                });
-            }
-            catch (TaskCanceledException) { State.DeepWellInTimer = 0; }
-        }
-
-        // DeepWell Out 요청 처리 [2]
-        public async Task ExecuteDeepWellOutAsync(CancellationToken cancellationToken)
-        {
-            if (State.CurrentState != MachineState.Ready) return;
-
-            var plcData = _plcService.GetDeviceStatus();
-            if (!plcData.Di3) // 센서가 OFF이면 가져가지 못함 [2]
-            {
-                Console.WriteLine("DeepWell Out 불가: 가져갈 제품이 없습니다.");
-                return;
-            }
-
-            bool initialState = plcData.Di3;
-
-            try
-            {
-                for (int i = 5; i > 0; i--)
-                {
-                    State.DeepWellOutTimer = i;
-                    await Task.Delay(1000, cancellationToken);
-
-                    if (_plcService.GetDeviceStatus().Di3 != initialState)
-                    {
-                        Console.WriteLine("에러: DeepWell Out 대기 중 상태 변경됨.");
-                        State.CurrentState = MachineState.Stop;
-                        State.DeepWellOutTimer = 0;
-                        return;
-                    }
+                    State.DeepWellInMessage = "DW In 제거 요망";
+                    _waitDwInRemove = true;
                 }
-
-                State.DeepWellOutTimer = 30;
-                _ = Task.Run(async () =>
+                else if (portType == 3)
                 {
-                    await Task.Delay(30000);
                     State.DeepWellOutTimer = 0;
-                });
-            }
-            catch (TaskCanceledException) { State.DeepWellOutTimer = 0; }
-        }
-
-        // Agar Plate In 요청 처리 및 메인 루틴 진입 [3]
-        public async Task ExecuteAgarPlateInAsync(CancellationToken cancellationToken)
-        {
-            if (State.CurrentState != MachineState.Ready) return;
-
-            var plcData = _plcService.GetDeviceStatus();
-            if (plcData.Di4) // 로드 포트에 제품이 있으면 넣지 못함 [3]
-            {
-                Console.WriteLine("Agar Plate In 불가: 포트에 이미 제품이 있습니다.");
-                return;
-            }
-
-            bool initialState = plcData.Di4;
-
-            try
-            {
-                for (int i = 5; i > 0; i--)
-                {
-                    State.AgarPlateTimer = i;
-                    await Task.Delay(1000, cancellationToken);
-
-                    if (_plcService.GetDeviceStatus().Di4 != initialState)
-                    {
-                        Console.WriteLine("에러: Agar Plate In 대기 중 상태 변경됨.");
-                        State.CurrentState = MachineState.Stop;
-                        State.AgarPlateTimer = 0;
-                        return;
-                    }
+                    State.DeepWellOutMessage = "DW Out 제거 요망";
+                    _waitDwOutRemove = true;
                 }
-
-                State.AgarPlateTimer = 30;
-                _ = Task.Run(async () =>
+                else if (portType == 4)
                 {
-                    await Task.Delay(30000);
                     State.AgarPlateTimer = 0;
-                });
-
-                // Agar Plate가 들어오면 메인 루틴 실행 (Run 상태 전환) [1]
-                await StartMainRoutineAsync(cancellationToken);
-            }
-            catch (TaskCanceledException) { State.AgarPlateTimer = 0; }
-        }
-
-        // --------------------------------------------------------
-        // 3. 메인 루틴 실행 로직 [1]
-        // --------------------------------------------------------
-        private async Task StartMainRoutineAsync(CancellationToken cancellationToken)
-        {
-            // 시작 전 카운터 확인 로직 [1]
-            if (State.TipBoxCount == 0 || State.DeepWellCount == 0)
-            {
-                Console.WriteLine("에러: TipBox 또는 Deep Well 제품을 로딩하세요.");
-                State.CurrentState = MachineState.Stop;
-                return;
-            }
-
-            // Agar Plate가 들어오면 Run 상태가 됨 [1]
-            State.CurrentState = MachineState.Run;
-
-            try
-            {
-                // 1. Agar Plate Off (Work Start 가정) [1]
-                Console.WriteLine("MainRoutine 1: Agar Plate Off (Work Start)");
-
-                // 2. 내부 타이머 진행 10초 [1]
-                for (int i = 10; i > 0; i--)
-                {
-                    if (State.CurrentState == MachineState.Stop) return; // 중간에 Stop 명령 발생 시 중단
-                    await Task.Delay(1000, cancellationToken);
+                    State.AgarPlateMessage = "Agar 제거 요망";
+                    _waitAgarInRemove = true;
                 }
-
-                // 3. Agar Plate On (Work done 가정) [1]
-                Console.WriteLine("MainRoutine 3: Agar Plate On (Work done)");
-
-                // 4. 카운터 감소 [1]
-                State.TipBoxCount--;
-                State.DeepWellCount--;
-                Console.WriteLine("MainRoutine 4: Tipbox, Deep Well 카운터 -1");
-
-                // 5. Deep Well Out On [1]
-                Console.WriteLine("MainRoutine 5: Deep Well Out On");
-
-                // 6. 장비 상태는 Stop으로 [1]
-                State.CurrentState = MachineState.Stop;
-                Console.WriteLine("MainRoutine 종료: 장비 상태 Stop");
             }
             catch (TaskCanceledException)
             {
-                State.CurrentState = MachineState.Stop;
+                // 5초가 되기 전에 센서가 OFF 되면 아무 작업도 하지 않음 (초기화는 CheckSensorState에서 수행)
             }
         }
+
+        // 장비 상태 제어 버튼 로직 (기존 유지)
+        public void PressStartButton() => State.CurrentState = MachineState.Ready;
+        public void PressStopButton() => State.CurrentState = MachineState.Stop;
     }
 }

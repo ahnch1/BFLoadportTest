@@ -5,6 +5,7 @@ const App: React.FC = () => {
   const { 
     machineState, tipBoxCount, deepWellCount, 
     tipLoadTimer, deepWellInTimer, deepWellOutTimer, agarPlateTimer, 
+    tipLoadMessage, deepWellInMessage, deepWellOutMessage, agarPlateMessage,
     plcData, setDemoState, setPlcData 
   } = useStore();
   
@@ -13,14 +14,32 @@ const App: React.FC = () => {
   useEffect(() => {
     const eventSource = new EventSource('https://localhost:7191/api/plc/stream'); 
     
-    // onopen, onerror를 통한 isConnected 갱신 삭제
-    
-    eventSource.onmessage = (event) => {
+ eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.demoState) setDemoState(data.demoState);
-      if (data.plcData) setPlcData(data.plcData);
-    };
+      
+      // 1. 데모 상태 매핑 (백엔드의 대문자 변수들을 프론트엔드의 소문자 변수들에 강제 주입)
+      if (data.demoState) {
+        const stateMap = ['Stop', 'Ready', 'Run'] as const; // 0: Stop, 1: Ready, 2: Run
+        setDemoState({
+          machineState: stateMap[data.demoState.CurrentState || 0],
+          tipBoxCount: data.demoState.TipBoxCount,
+          deepWellCount: data.demoState.DeepWellCount,
+          tipLoadTimer: data.demoState.TipLoadTimer,
+          tipLoadMessage: data.demoState.TipLoadMessage,
+          deepWellInTimer: data.demoState.DeepWellInTimer,
+          deepWellInMessage: data.demoState.DeepWellInMessage,
+          deepWellOutTimer: data.demoState.DeepWellOutTimer,
+          deepWellOutMessage: data.demoState.DeepWellOutMessage,
+          agarPlateTimer: data.demoState.AgarPlateTimer,
+          agarPlateMessage: data.demoState.AgarPlateMessage,
+        });
+      }
 
+      // 2. PLC 데이터 매핑 (기존 Di1, Di2 등은 양쪽 다 대문자로 일치하므로 그대로 사용)
+      if (data.plcData) {
+        setPlcData(data.plcData);
+      }
+    };
     return () => {
       eventSource.close();
     };
@@ -60,7 +79,7 @@ const App: React.FC = () => {
             </div>
           </div>
           
-          {/* 💡 디버깅용: 실제 PLC 연결 상태 텍스트 출력 */}
+          {/*  디버깅용: 실제 PLC 연결 상태 텍스트 출력 */}
           <div style={{ color: plcData.ConnectionState === 'Connected' ? '#22c55e' : '#ef4444', fontSize: '14px', fontWeight: 'bold', marginBottom: '10px' }}>
             상태 메세지: {plcData.ConnectionState}
           </div>
@@ -88,6 +107,7 @@ const App: React.FC = () => {
         <PortBlock 
           timerLabel="Timer Tipbox In" 
           timerValue={tipLoadTimer} 
+          message={tipLoadMessage} // 메세지 Props 전달
           portName="TIPBOX" 
           sensorState={plcData.Di1} // Tipbox In 센서 매핑
           onClick={() => sendCommand('tipload')} 
@@ -95,6 +115,7 @@ const App: React.FC = () => {
         <PortBlock 
           timerLabel="Timer DW In" 
           timerValue={deepWellInTimer} 
+          message={deepWellInMessage} // 메세지 Props 전달
           portName="DEEP WELL IN" 
           sensorState={plcData.Di2} // DeepWell In 센서 매핑
           onClick={() => sendCommand('deepwell-in')} 
@@ -102,6 +123,7 @@ const App: React.FC = () => {
         <PortBlock 
           timerLabel="Timer DW Out" 
           timerValue={deepWellOutTimer} 
+          message={deepWellOutMessage} // 메세지 Props 전달
           portName="DEEP WELL OUT" 
           sensorState={plcData.Di3} // DeepWell Out 센서 매핑
           onClick={() => sendCommand('deepwell-out')} 
@@ -109,6 +131,7 @@ const App: React.FC = () => {
         <PortBlock 
           timerLabel="Timer Agar In" 
           timerValue={agarPlateTimer} 
+          message={agarPlateMessage} // 메세지 Props 전달
           portName="AGAR IN" 
           sensorState={plcData.Di4} // Agar In 센서 매핑
           onClick={() => sendCommand('agarplate-in')} 
@@ -120,16 +143,17 @@ const App: React.FC = () => {
 
 // 개별 포트 컴포넌트 렌더링 함수 (센서 상태 표시 LED 추가) [1, 5]
 const PortBlock = ({ 
-  timerLabel, timerValue, portName, sensorState, onClick 
+  timerLabel, timerValue, message, portName, sensorState, onClick 
 }: { 
-  timerLabel: string, timerValue: number, portName: string, sensorState: boolean, onClick: () => void 
+  timerLabel: string, timerValue: number, message?: string, portName: string, sensorState: boolean, onClick: () => void 
 }) => (
   <div style={styles.portWrapper}>
     <div style={styles.timerBox}>
       <div>{timerLabel.split(' ')}</div>
       <div>{timerLabel.split(' ').slice(1).join(' ')}</div>
-      <div style={{ color: 'red', fontWeight: 'bold', marginTop: '5px' }}>
-        {timerValue > 0 ? `${timerValue}s` : '\u00A0'}
+      {/* 타이머 또는 메세지 출력 영역 */}
+      <div style={{ color: 'red', fontWeight: 'bold', marginTop: '5px', fontSize: message ? '12px' : '16px', minHeight: '18px' }}>
+        {message ? message : (timerValue > 0 ? `${timerValue}s` : '\u00A0')}
       </div>
     </div>
     

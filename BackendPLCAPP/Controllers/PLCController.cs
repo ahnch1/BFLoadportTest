@@ -74,29 +74,24 @@ namespace BackendPLCAPP.Controllers
         [HttpPost("api/demo/tipload")]
         public IActionResult TipLoad()
         {
-            // 비동기 작업으로 백그라운드에서 타이머(5초/30초) 동작 수행
-            _ = _demoService.ExecuteTipLoadAsync(CancellationToken.None);
-            return Ok();
+            return Ok(new { message = "센서 자동 인식으로 전환되었습니다." });
         }
 
         [HttpPost("api/demo/deepwell-in")]
         public IActionResult DeepWellIn()
         {
-            _ = _demoService.ExecuteDeepWellInAsync(CancellationToken.None);
             return Ok();
         }
 
         [HttpPost("api/demo/deepwell-out")]
         public IActionResult DeepWellOut()
         {
-            _ = _demoService.ExecuteDeepWellOutAsync(CancellationToken.None);
             return Ok();
         }
 
         [HttpPost("api/demo/agarplate-in")]
         public IActionResult AgarPlateIn()
         {
-            _ = _demoService.ExecuteAgarPlateInAsync(CancellationToken.None);
             return Ok();
         }
     }

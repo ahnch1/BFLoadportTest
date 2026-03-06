@@ -8,11 +8,13 @@ namespace BackendPLCAPP.Services
     public class PlcBackgroundWorker : BackgroundService
     {
         private readonly C6015Work _plcWork;
+        private readonly DemoRoutineService _demoService; // 서비스 주입 추가
 
         // 싱글톤으로 등록된 C6015Work를 주입받음
-        public PlcBackgroundWorker(C6015Work plcWork)
+        public PlcBackgroundWorker(C6015Work plcWork, DemoRoutineService demoService)
         {
             _plcWork = plcWork;
+            _demoService = demoService;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -21,7 +23,10 @@ namespace BackendPLCAPP.Services
             while (!stoppingToken.IsCancellationRequested)
             {
                 // PLC 데이터를 읽어서 C6015Work 내부의 _currentStatus 캐시를 갱신
-                await _plcWork.ReadInputsAsync(stoppingToken);
+                var status = await _plcWork.ReadInputsAsync(stoppingToken);
+
+                // 읽어온 데이터를 데모 서비스에 넘겨 자동 로직(카운터/타이머)을 처리하게 함
+                _demoService.CheckSensorState(status);
 
                 // 통신 부하를 줄이기 위해 50ms 대기 (초당 20회 갱신)
                 await Task.Delay(50, stoppingToken);
