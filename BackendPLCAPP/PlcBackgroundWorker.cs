@@ -17,11 +17,9 @@ namespace BackendPLCAPP.Services
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            Console.WriteLine("Start ExecuteAsync---"); // 시작 확인
             // 프로그램이 종료될 때까지(cancellation이 요청될 때까지) 무한 루프
             while (!stoppingToken.IsCancellationRequested)
             {
-                Console.WriteLine("Read PLC..."); // 루프가 도는지 확인
                 // PLC 데이터를 읽어서 C6015Work 내부의 _currentStatus 캐시를 갱신
                 await _plcWork.ReadInputsAsync(stoppingToken);
 
